@@ -2,158 +2,225 @@ import pandas as pd
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 from datetime import datetime
 
-# Leitura das tabelas Excel
-facebook_df = pd.read_excel('Pasta.xlsx', sheet_name="Facebook")
-instagram_df = pd.read_excel('Pasta.xlsx', sheet_name="Instagram")
+def read_data():
+    # Leitura das tabelas Excel
+    facebook_df = pd.read_excel('Pasta.xlsx', sheet_name="Facebook")
+    instagram_df = pd.read_excel('Pasta.xlsx', sheet_name="Instagram")
 
-# Adicionando uma coluna para identificar a origem dos dados
-facebook_df['canal_origem'] = 'Facebook'
-instagram_df['canal_origem'] = 'Instagram'
+    # Adicionando uma coluna para identificar a origem dos dados
+    facebook_df['canal_origem'] = 'Facebook'
+    instagram_df['canal_origem'] = 'Instagram'
 
-# Combinando os DataFrames
-df = pd.concat([facebook_df, instagram_df], ignore_index=True)
+    # Combinando os DataFrames
+    return pd.concat([facebook_df, instagram_df], ignore_index=True)
 
-# Converter a coluna 'feedback' para numérico, substituindo valores não numéricos por NaN
-df['feedback'] = pd.to_numeric(df['feedback'], errors='coerce')
+def preprocess_data(df):
+    # Converter a coluna 'feedback' para numérico, substituindo valores não numéricos por NaN
+    df['feedback'] = pd.to_numeric(df['feedback'], errors='coerce')
+    df['data_nascimento'] = pd.to_datetime(df['data_nascimento'], errors='coerce')
 
-# Cálculo da idade baseado na data de nascimento
-df['data_nascimento'] = pd.to_datetime(df['data_nascimento'], errors='coerce')
+    # Calcular a idade
+    df['idade'] = df['data_nascimento'].apply(lambda x: calcular_idade(x) if pd.notnull(x) else np.nan)
 
-# Função para calcular a idade
+    # Extraindo o mês da data de venda
+    df['mes_venda'] = df['data_venda'].dt.to_period('M')
+
+    return df
+
 def calcular_idade(data_nascimento):
     hoje = datetime.today()
     return hoje.year - data_nascimento.year - ((hoje.month, hoje.day) < (data_nascimento.month, data_nascimento.day))
 
-# Aplicar a função de idade na coluna 'data_nascimento'
-df['idade'] = df['data_nascimento'].apply(lambda x: calcular_idade(x) if pd.notnull(x) else np.nan)
+def analyze_sales(df):
+    # Contando o número de vendas por mês
+    vendas_por_mes = df.groupby('mes_venda')['Venda'].sum()
+    mes_mais_vendas = vendas_por_mes.idxmax()
+    maior_numero_vendas = vendas_por_mes.max()
+    print(f"\nO mês com o maior número de vendas foi: {mes_mais_vendas} com {maior_numero_vendas} vendas.\n")
 
-# Extraindo o mês da data de venda
-df['mes_venda'] = df['data_venda'].dt.to_period('M')
+    # Cálculo da média das idades
+    media_idade = int(df['idade'].mean())
+    print(f"Média de idade dos clientes cadastrados: {media_idade} anos")
 
-# Contando o número de vendas por mês
-vendas_por_mes = df.groupby('mes_venda')['Venda'].sum()
+def analyze_age_distribution(df):
+    # Contagem de clientes por faixa etária
+    faixas_etarias = pd.cut(df['idade'], bins=[10, 20, 30, 40, 50, 60, 70, 80], right=False)
+    contagem_faixas = df.groupby(faixas_etarias, observed=True)['idade'].count()
+    print("\nContagem de clientes por faixa etária:")
+    print(contagem_faixas)
 
-# Identificando o mês com o maior número de vendas
-mes_mais_vendas = vendas_por_mes.idxmax()
-maior_numero_vendas = vendas_por_mes.max()
+def analyze_buyers(df):
+    # Análise de maiores compradores
+    compradores_total = df.groupby('idade')['Venda'].sum().sort_values(ascending=False)
+    top_20_percent = int(len(compradores_total) * 0.2)
+    top_compradores = compradores_total.index[:top_20_percent]
+    media_idade_top_compradores = int(np.mean(top_compradores.to_numpy()))
+    print(f"\nMédia de idade dos 20% que mais compraram: {media_idade_top_compradores} anos")
 
-print(f"\nO mês com o maior número de vendas foi: {mes_mais_vendas} com {maior_numero_vendas} vendas.\n")
+def analyze_gender(df):
+    # Análise de gênero
+    contagem_genero = df['genero'].value_counts()
+    print("\nContagem de clientes por gênero:")
+    print(contagem_genero)
 
-# Cálculo da média das idades
-media_idade = int(df['idade'].mean())  # Arredondar para inteiro
-print(f"Média de idade dos clientes cadastrados: {media_idade} anos")
+    # Identificando o gênero que compõe a maioria dos compradores
+    compradores = df[df['Venda'] > 0]  # Filtrar compradores
+    contagem_genero_compradores = compradores['genero'].value_counts()
+    genero_maioria_compradores = contagem_genero_compradores.idxmax()
+    print(f"\nO gênero que compõe a maioria dos compradores é: {genero_maioria_compradores}")
 
-# Contagem de clientes por faixa etária
-faixas_etarias = pd.cut(df['idade'], bins=[10, 20, 30, 40, 50, 60, 70, 80], right=False)
-contagem_faixas = df.groupby(faixas_etarias, observed=True)['idade'].count()
+def analyze_channels(df):
+    # Análise de canais de comunicação que mais trazem resultados
+    canais = df.groupby('canal_origem')['Venda'].sum()
+    print("\nVendas por canal de origem:")
+    print(canais)
 
-print("\nContagem de clientes por faixa etária:")
-print(contagem_faixas)
+    # Decisão de onde investir mais em marketing
+    canal_mais_eficaz = canais.idxmax()
+    print(f"O canal mais eficaz para investimento em marketing é: {canal_mais_eficaz}")
 
-# Análise de maiores compradores
-compradores_total = df.groupby('idade')['Venda'].sum().sort_values(ascending=False)
+def analyze_feedbacks(df):
+    # Análise de feedbacks
+    feedbacks = df.groupby('canal_origem')['feedback'].mean()
+    print("\nMédia de feedback por canal:")
+    print(feedbacks)
 
-# Média de idade dos 20% que mais compraram
-top_20_percent = int(len(compradores_total) * 0.2)
-top_compradores = compradores_total.index[:top_20_percent]
-media_idade_top_compradores = int(np.mean(top_compradores.to_numpy()))  # Arredondar para inteiro
+def calculate_profit(df):
+    # Cálculo do lucro com base no preço fixo
+    preco_fixo = 12.90
+    df['lucro'] = df['Venda'] * preco_fixo
+    lucro_total = df['lucro'].sum()
+    print(f"\nO lucro total obtido com as vendas foi: R$ {lucro_total:.2f}")
 
-print(f"\nMédia de idade dos 20% que mais compraram: {media_idade_top_compradores} anos")
+    # Lucro por canal de origem
+    lucro_por_canal = df.groupby('canal_origem')['lucro'].sum()
+    print("\nLucro por canal de origem:")
+    print(lucro_por_canal)
 
-# Análise de gênero
-contagem_genero = df['genero'].value_counts()
-print("\nContagem de clientes por gênero:")
-print(contagem_genero)
+def analyze_engagement(df):
+    # Análise de curtidas e compartilhamentos
+    curtidas_por_canal = df.groupby('canal_origem')['Curtidas'].mean()
+    compartilhamentos_por_canal = df.groupby('canal_origem')['Compartilhamentos'].mean()
 
-# Identificando o gênero que compõe a maioria dos compradores
-compradores = df[df['Venda'] > 0]  # Filtrar compradores
-contagem_genero_compradores = compradores['genero'].value_counts()
-genero_maioria_compradores = contagem_genero_compradores.idxmax()
-print(f"\nO gênero que compõe a maioria dos compradores é: {genero_maioria_compradores}")
+    # Exibindo a média de curtidas e compartilhamentos por canal
+    print("\nMédia de curtidas por canal:")
+    print(curtidas_por_canal)
 
-# Análise de canais de comunicação que mais trazem resultados
-canais = df.groupby('canal_origem')['Venda'].sum()
-print("\nVendas por canal de origem:")
-print(canais)
+    print("\nMédia de compartilhamentos por canal:")
+    print(compartilhamentos_por_canal)
 
-# Decisão de onde investir mais em marketing
-canal_mais_eficaz = canais.idxmax()
-print(f"O canal mais eficaz para investimento em marketing é: {canal_mais_eficaz}")
+    # Comparando as redes sociais com base nas médias
+    melhor_rede_curtidas = curtidas_por_canal.idxmax()
+    melhor_rede_compartilhamentos = compartilhamentos_por_canal.idxmax()
 
-# Análise de feedbacks
-feedbacks = df.groupby('canal_origem')['feedback'].mean()
-print("\nMédia de feedback por canal:")
-print(feedbacks)
+    print(f"\nA rede com a melhor média de curtidas é: {melhor_rede_curtidas}")
+    print(f"A rede com a melhor média de compartilhamentos é: {melhor_rede_compartilhamentos}")
 
-# Cálculo do lucro com base no preço fixo
-preco_fixo = 12.90
+def segment_customers(df):
+    # Pré-processamento para segmentação de clientes
+    features = df[['Venda', 'feedback']].dropna(subset=['Venda', 'feedback'])
 
-# Criando uma nova coluna 'lucro', que é o número de vendas vezes o preço fixo
-df['lucro'] = df['Venda'] * preco_fixo
+    # Verificando o número de amostras válidas
+    print(f"Número de amostras válidas para segmentação: {len(features)}")
 
-# Cálculo do lucro total
-lucro_total = df['lucro'].sum()
-print(f"\nO lucro total obtido com as vendas foi: R$ {lucro_total:.2f}")
+    if len(features) >= 3:  # Verifica se há ao menos 3 amostras
+        scaler = StandardScaler()
+        features_scaled = scaler.fit_transform(features)
 
-# Lucro por canal de origem
-lucro_por_canal = df.groupby('canal_origem')['lucro'].sum()
-print("\nLucro por canal de origem:")
-print(lucro_por_canal)
+        # Segmentação de clientes usando KMeans
+        kmeans = KMeans(n_clusters=3, random_state=42)
+        df['segmento'] = kmeans.fit_predict(features_scaled)
 
-# Análise de curtidas e compartilhamentos
-curtidas_por_canal = df.groupby('canal_origem')['Curtidas'].mean()
-compartilhamentos_por_canal = df.groupby('canal_origem')['Compartilhamentos'].mean()
+        # Análise de segmentos
+        segmentos = df.groupby('segmento').agg({
+            'feedback': 'mean',
+            'Venda': 'mean',
+            'canal_origem': 'count',
+            'lucro': 'mean'
+        })
 
-# Exibindo a média de curtidas e compartilhamentos por canal
-print("\nMédia de curtidas por canal:")
-print(curtidas_por_canal)
+        # Renomeando a coluna de contagem de clientes
+        segmentos.rename(columns={'canal_origem': 'N_Clientes'}, inplace=True)
+        print("\nAnálise dos segmentos:")
+        print(segmentos)
 
-print("\nMédia de compartilhamentos por canal:")
-print(compartilhamentos_por_canal)
+        # Decisão sobre quais segmentos priorizar
+        segmento_priorizado = segmentos['Venda'].idxmax()
+        print(f"\nO segmento que deve ser priorizado é: Segmento {segmento_priorizado}")
+    else:
+        print("Amostras insuficientes para segmentação.")
 
-# Comparando as redes sociais com base nas médias
-melhor_rede_curtidas = curtidas_por_canal.idxmax()
-melhor_rede_compartilhamentos = compartilhamentos_por_canal.idxmax()
+def prepare_target_variable(df):
+    # Criar a variável alvo (se houve venda ou não)
+    df['sucesso_campanha'] = np.where(df['Venda'] > 0, 1, 0)
+    return df
 
-print(f"\nA rede com a melhor média de curtidas é: {melhor_rede_curtidas}")
-print(f"A rede com a melhor média de compartilhamentos é: {melhor_rede_compartilhamentos}")
+def train_logistic_regression(df):
+    # Verifique a distribuição da variável alvo
+    print(df['sucesso_campanha'].value_counts())
 
-# Pré-processamento para segmentação de clientes
-# Removendo apenas os valores ausentes de 'Venda' e 'feedback'
-features = df[['Venda', 'feedback']].dropna(subset=['Venda', 'feedback'])
+    if df['sucesso_campanha'].value_counts().min() > 0:  # Se há pelo menos uma amostra de cada classe
+        # Selecionar as features para prever o sucesso da campanha
+        features = ['feedback', 'idade', 'Curtidas', 'Compartilhamentos'] + list(df.filter(like='canal_origem_').columns) + list(df.filter(like='genero_').columns)
 
-# Verificando o número de amostras válidas
-print(f"Número de amostras válidas para segmentação: {len(features)}")
+        # Separar as variáveis independentes (X) e a variável alvo (y)
+        X = df[features]
+        y = df['sucesso_campanha']
 
-# Verifique se há amostras suficientes para o KMeans
-if len(features) >= 3:  # Verifica se há ao menos 3 amostras
-    scaler = StandardScaler()
-    features_scaled = scaler.fit_transform(features)
+        # Dividir os dados em treino e teste
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-    # Segmentação de clientes usando KMeans
-    kmeans = KMeans(n_clusters=3, random_state=42)
-    df['segmento'] = kmeans.fit_predict(features_scaled)
+        # Padronizar os dados
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train[['feedback', 'idade', 'Curtidas', 'Compartilhamentos']])
+        X_test_scaled = scaler.transform(X_test[['feedback', 'idade', 'Curtidas', 'Compartilhamentos']])
 
-    # Análise de segmentos - Filtrando apenas colunas numéricas
-    segmentos = df.groupby('segmento').agg({
-        'feedback': 'mean',
-        'Venda': 'mean',
-        'canal_origem': 'count',  # Para contar quantos clientes estão em cada segmento
-        'lucro': 'mean'  # Média de lucro por segmento
-    })
+        # Manter as colunas categóricas
+        X_train_final = pd.concat([pd.DataFrame(X_train_scaled, columns=['feedback', 'idade', 'Curtidas', 'Compartilhamentos']), X_train.drop(columns=['feedback', 'idade', 'Curtidas', 'Compartilhamentos']).reset_index(drop=True)], axis=1)
+        X_test_final = pd.concat([pd.DataFrame(X_test_scaled, columns=['feedback', 'idade', 'Curtidas', 'Compartilhamentos']), X_test.drop(columns=['feedback', 'idade', 'Curtidas', 'Compartilhamentos']).reset_index(drop=True)], axis=1)
 
-    # Renomeando a coluna de contagem de clientes
-    segmentos.rename(columns={'canal_origem': 'N_Clientes'}, inplace=True)
+        # Treinar o modelo de regressão logística
+        modelo = LogisticRegression()
+        try:
+            modelo.fit(X_train_final, y_train)
+            
+            # Previsões
+            y_pred = modelo.predict(X_test_final)
 
-    print("\nAnálise dos segmentos:")
-    print(segmentos)
+            # Avaliação do modelo
+            acuracia = accuracy_score(y_test, y_pred)
+            matriz_confusao = confusion_matrix(y_test, y_pred)
+            relatorio_classificacao = classification_report(y_test, y_pred)
 
-    # Decisão sobre quais segmentos priorizar
-    segmento_priorizado = segmentos['Venda'].idxmax()
-    print(f"\nO segmento que deve ser priorizado é: Segmento {segmento_priorizado}")
-else:
-    print("Amostras insuficientes para segmentação.")
+            print(f"\nAcurácia do modelo: {acuracia:.2f}")
+            print("\nMatriz de Confusão:")
+            print(matriz_confusao)
+            print("\nRelatório de Classificação:")
+            print(relatorio_classificacao)
+        except ValueError as e:
+            print(f"Erro ao treinar o modelo: {e}")
+    else:
+        print("A variável alvo não contém amostras suficientes de ambas as classes para treinar o modelo.")
 
+def main():
+    df = read_data()
+    df = preprocess_data(df)
+    analyze_sales(df)
+    analyze_age_distribution(df)
+    analyze_buyers(df)
+    analyze_gender(df)
+    analyze_channels(df)
+    analyze_feedbacks(df)
+    calculate_profit(df)
+    analyze_engagement(df)
+    segment_customers(df)
+    df = prepare_target_variable(df)
+    train_logistic_regression(df)
 
+if __name__ == "__main__":
+    main()
