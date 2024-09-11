@@ -9,6 +9,8 @@ from datetime import datetime
 import tkinter as tk
 from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 def read_data():
     # Leitura das tabelas Excel
@@ -45,8 +47,8 @@ def analyze_buyers(df):
     top_20_percent = int(len(compradores_total) * 0.2)
     top_compradores = compradores_total.index[:top_20_percent]
     media_idade_top_compradores = int(np.mean(top_compradores.to_numpy()))
-    menssage = (f"{media_idade_top_compradores}")
-    return menssage
+    message = (f"{media_idade_top_compradores}")
+    return message
 
 def analyze_age_distribution(df):
     # Contagem de clientes por faixa etária
@@ -55,7 +57,6 @@ def analyze_age_distribution(df):
     contagem_faixas.rename(columns={'faixa_etaria': 'Faixa Etária'}, inplace=True)
     
     return contagem_faixas, analyze_buyers(df)
-
 
 def analyze_gender(df):
     # Análise de gênero
@@ -111,7 +112,7 @@ def analyze_engagement(df):
     return pd.merge(curtidas_por_canal, compartilhamentos_por_canal, on='Canal'), result_message
 
 def segment_customers(df):
-   # Pré-processamento para segmentação de clientes
+    # Pré-processamento para segmentação de clientes
     features = df[['Venda', 'feedback']].dropna(subset=['Venda', 'feedback'])
 
     if len(features) >= 3:  # Verifica se há ao menos 3 amostras
@@ -138,6 +139,7 @@ def segment_customers(df):
         return segmentos, message
     else:
         print("Amostras insuficientes para segmentação.")
+
 def show_table(df):
     for widget in frame_table.winfo_children():
         widget.destroy()
@@ -152,6 +154,27 @@ def show_table(df):
     for _, row in df.iterrows():
         tree.insert('', 'end', values=list(row))
 
+def show_graph(data, kind='bar', title=''):
+    for widget in frame_table.winfo_children():
+        widget.destroy()
+
+    # Cria a figura para o gráfico
+    fig, ax = plt.subplots(figsize=(6, 4))
+
+    if kind == 'bar':
+        data.plot(kind='bar', x=data.columns[0], y=data.columns[1], ax=ax, legend=False)
+        # Coloca os rótulos do eixo x na horizontal
+        plt.xticks(rotation=0)
+    elif kind == 'pie':
+        data.set_index(data.columns[0]).plot(kind='pie', y=data.columns[1], ax=ax, legend=False, autopct='%1.1f%%')
+    
+    ax.set_title(title)
+    
+    # Insere o gráfico no frame usando o FigureCanvasTkAgg
+    canvas = FigureCanvasTkAgg(fig, master=frame_table)
+    canvas.draw()
+    canvas.get_tk_widget().pack(expand=True, fill='both')
+
 def show_message(message):
     for widget in frame_message.winfo_children():
         widget.destroy()
@@ -161,43 +184,55 @@ def show_message(message):
     text.insert(tk.END, message)
     text.config(state=tk.DISABLED)
 
-def show_table_with_result(df, analysis_function, result_label):
+def show_table_with_result(df, analysis_function, result_label, chart_type='bar'):
     table, result_message = analysis_function(df)
     if not table.empty:
-        show_table(table)
+        if chart_type:
+            show_graph(table, kind=chart_type, title=result_label)
+        else:
+            show_table(table)
     show_message(result_label + "\n" + result_message)
 
-def run_analysis(analysis_function, result_label):
+def run_analysis(analysis_function, result_label, chart_type='bar'):
     df = read_data()
     df = preprocess_data(df)
-    show_table_with_result(df, analysis_function, result_label)
+    show_table_with_result(df, analysis_function, result_label, chart_type)
 
-def create_menu(root):
-    menu = tk.Menu(root)
-    root.geometry("500x590")
-    root.config(menu=menu)
-    
-    analysis_menu = tk.Menu(menu, tearoff=0)
-    menu.add_cascade(label="Análises", menu=analysis_menu)
-    
-    analysis_menu.add_command(label="Gênero", command=lambda: run_analysis(analyze_gender, "Análise de Gênero"))
-    analysis_menu.add_command(label="Faixa Etária", command=lambda: run_analysis(analyze_age_distribution, "Média de idade dos 20% que mais compraram: "))
-    analysis_menu.add_command(label="Canais de Comunicação", command=lambda: run_analysis(analyze_channels, "Análise de Canais de Comunicação"))
-    analysis_menu.add_command(label="Feedbacks", command=lambda: run_analysis(analyze_feedbacks, ""))
-    analysis_menu.add_command(label="Lucro", command=lambda: run_analysis(calculate_profit, "Análise de Lucro"))
-    analysis_menu.add_command(label="Engajamento", command=lambda: run_analysis(analyze_engagement, "Análise de Engajamento"))
-    analysis_menu.add_command(label="Segmentação de Clientes", command=lambda: run_analysis(segment_customers, "O segmento que deve ser priorizado é:"))
+def create_gui():
+    global frame_table, frame_message
 
-root = tk.Tk()
-root.title("Análise de Dados")
+    root = tk.Tk()
+    root.title("Análise de Dados de Marketing")
+    root.geometry("800x600")
 
-frame_table = tk.Frame(root)
-frame_table.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    tab_control = ttk.Notebook(root)
+    tab1 = ttk.Frame(tab_control)
+    tab_control.add(tab1, text="Análises")
+    tab_control.pack(expand=True, fill='both')
 
-frame_message = tk.Frame(root)
-frame_message.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+    frame_buttons = ttk.Frame(tab1)
+    frame_buttons.pack(side=tk.LEFT, fill='y', padx=10, pady=10)
 
-create_menu(root)
+    frame_table = ttk.Frame(tab1)
+    frame_table.pack(side=tk.TOP, expand=True, fill='both')
 
-root.mainloop()
+    frame_message = ttk.Frame(tab1)
+    frame_message.pack(side=tk.BOTTOM, fill='x', padx=10, pady=10)
 
+    buttons = [
+        ("Faixa Etária", lambda: run_analysis(analyze_age_distribution, "Média de idade dos 20% que mais compraram:")),
+        ("Gênero", lambda: run_analysis(analyze_gender, "Distribuição de Gênero dos Clientes:")),
+        ("Canais de Comunicação", lambda: run_analysis(analyze_channels, "Análise de Canais de Comunicação:")),
+        ("Feedbacks", lambda: run_analysis(analyze_feedbacks, "Análise de Feedbacks:")),
+        ("Lucro", lambda: run_analysis(calculate_profit, "Análise de Lucros:")),
+        ("Engajamento", lambda: run_analysis(analyze_engagement, "Análise de Engajamento:")),
+        ("Segmentação de Clientes", lambda: run_analysis(segment_customers, "Segmentação de Clientes:", chart_type=None)),
+    ]
+
+    for text, command in buttons:
+        ttk.Button(frame_buttons, text=text, command=command).pack(fill='x', pady=5)
+
+    root.mainloop()
+
+if __name__ == "__main__":
+    create_gui()

@@ -6,6 +6,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 from datetime import datetime
+import tkinter as tk
+from tkinter import ttk
+from tkinter.scrolledtext import ScrolledText
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 def read_data():
     # Leitura das tabelas Excel
@@ -36,97 +41,79 @@ def calcular_idade(data_nascimento):
     hoje = datetime.today()
     return hoje.year - data_nascimento.year - ((hoje.month, hoje.day) < (data_nascimento.month, data_nascimento.day))
 
-def analyze_sales(df):
-    # Contando o número de vendas por mês
-    vendas_por_mes = df.groupby('mes_venda')['Venda'].sum()
-    mes_mais_vendas = vendas_por_mes.idxmax()
-    maior_numero_vendas = vendas_por_mes.max()
-    print(f"\nO mês com o maior número de vendas foi: {mes_mais_vendas} com {maior_numero_vendas} vendas.\n")
-
-    # Cálculo da média das idades
-    media_idade = int(df['idade'].mean())
-    print(f"Média de idade dos clientes cadastrados: {media_idade} anos")
-
-def analyze_age_distribution(df):
-    # Contagem de clientes por faixa etária
-    faixas_etarias = pd.cut(df['idade'], bins=[10, 20, 30, 40, 50, 60, 70, 80], right=False)
-    contagem_faixas = df.groupby(faixas_etarias, observed=True)['idade'].count()
-    print("\nContagem de clientes por faixa etária:")
-    print(contagem_faixas)
-
 def analyze_buyers(df):
     # Análise de maiores compradores
     compradores_total = df.groupby('idade')['Venda'].sum().sort_values(ascending=False)
     top_20_percent = int(len(compradores_total) * 0.2)
     top_compradores = compradores_total.index[:top_20_percent]
     media_idade_top_compradores = int(np.mean(top_compradores.to_numpy()))
-    print(f"\nMédia de idade dos 20% que mais compraram: {media_idade_top_compradores} anos")
+    message = (f"{media_idade_top_compradores}")
+    return message
+
+def analyze_age_distribution(df):
+    # Contagem de clientes por faixa etária
+    faixas_etarias = pd.cut(df['idade'], bins=[10, 20, 30, 40, 50, 60, 70, 80], right=False)
+    contagem_faixas = df.groupby(faixas_etarias, observed=False)['idade'].count().reset_index(name='Número de Clientes')
+    contagem_faixas.rename(columns={'faixa_etaria': 'Faixa Etária'}, inplace=True)
+    
+    return contagem_faixas, analyze_buyers(df)
 
 def analyze_gender(df):
     # Análise de gênero
-    contagem_genero = df['genero'].value_counts()
-    print("\nContagem de clientes por gênero:")
-    print(contagem_genero)
-
-    # Identificando o gênero que compõe a maioria dos compradores
-    compradores = df[df['Venda'] > 0]  # Filtrar compradores
+    contagem_genero = df['genero'].value_counts().reset_index()
+    contagem_genero.columns = ['Gênero', 'Contagem']
+    
+    compradores = df[df['Venda'] > 0]
     contagem_genero_compradores = compradores['genero'].value_counts()
     genero_maioria_compradores = contagem_genero_compradores.idxmax()
-    print(f"\nO gênero que compõe a maioria dos compradores é: {genero_maioria_compradores}")
+    
+    result_message = f"O gênero que compõe a maioria dos compradores é: {genero_maioria_compradores}"
+    return contagem_genero, result_message
 
 def analyze_channels(df):
     # Análise de canais de comunicação que mais trazem resultados
-    canais = df.groupby('canal_origem')['Venda'].sum()
-    print("\nVendas por canal de origem:")
-    print(canais)
-
-    # Decisão de onde investir mais em marketing
-    canal_mais_eficaz = canais.idxmax()
-    print(f"O canal mais eficaz para investimento em marketing é: {canal_mais_eficaz}")
+    canais = df.groupby('canal_origem')['Venda'].sum().reset_index()
+    canais.columns = ['Canal', 'Vendas']
+    
+    canal_mais_eficaz = canais.loc[canais['Vendas'].idxmax(), 'Canal']
+    result_message = f"O canal mais eficaz para investimento em marketing é: {canal_mais_eficaz}"
+    return canais, result_message
 
 def analyze_feedbacks(df):
     # Análise de feedbacks
-    feedbacks = df.groupby('canal_origem')['feedback'].mean()
-    print("\nMédia de feedback por canal:")
-    print(feedbacks)
+    feedbacks = df.groupby('canal_origem')['feedback'].mean().reset_index()
+    feedbacks.columns = ['Canal', 'Média de Feedback']
+    return feedbacks, ""
 
 def calculate_profit(df):
     # Cálculo do lucro com base no preço fixo
     preco_fixo = 12.90
     df['lucro'] = df['Venda'] * preco_fixo
     lucro_total = df['lucro'].sum()
-    print(f"\nO lucro total obtido com as vendas foi: R$ {lucro_total:.2f}")
-
-    # Lucro por canal de origem
-    lucro_por_canal = df.groupby('canal_origem')['lucro'].sum()
-    print("\nLucro por canal de origem:")
-    print(lucro_por_canal)
+    lucro_por_canal = df.groupby('canal_origem')['lucro'].sum().reset_index()
+    lucro_por_canal.columns = ['Canal', 'Lucro']
+    
+    result_message = f"O lucro total obtido com as vendas foi: R$ {lucro_total:.2f}"
+    return lucro_por_canal, result_message
 
 def analyze_engagement(df):
     # Análise de curtidas e compartilhamentos
-    curtidas_por_canal = df.groupby('canal_origem')['Curtidas'].mean()
-    compartilhamentos_por_canal = df.groupby('canal_origem')['Compartilhamentos'].mean()
-
-    # Exibindo a média de curtidas e compartilhamentos por canal
-    print("\nMédia de curtidas por canal:")
-    print(curtidas_por_canal)
-
-    print("\nMédia de compartilhamentos por canal:")
-    print(compartilhamentos_por_canal)
-
-    # Comparando as redes sociais com base nas médias
-    melhor_rede_curtidas = curtidas_por_canal.idxmax()
-    melhor_rede_compartilhamentos = compartilhamentos_por_canal.idxmax()
-
-    print(f"\nA rede com a melhor média de curtidas é: {melhor_rede_curtidas}")
-    print(f"A rede com a melhor média de compartilhamentos é: {melhor_rede_compartilhamentos}")
+    curtidas_por_canal = df.groupby('canal_origem')['Curtidas'].mean().reset_index()
+    compartilhamentos_por_canal = df.groupby('canal_origem')['Compartilhamentos'].mean().reset_index()
+    
+    curtidas_por_canal.columns = ['Canal', 'Média de Curtidas']
+    compartilhamentos_por_canal.columns = ['Canal', 'Média de Compartilhamentos']
+    
+    result_message = (
+        f"A rede com a melhor média de curtidas é: {curtidas_por_canal.loc[curtidas_por_canal['Média de Curtidas'].idxmax(), 'Canal']}\n"
+        f"A rede com a melhor média de compartilhamentos é: {compartilhamentos_por_canal.loc[compartilhamentos_por_canal['Média de Compartilhamentos'].idxmax(), 'Canal']}"
+    )
+    
+    return pd.merge(curtidas_por_canal, compartilhamentos_por_canal, on='Canal'), result_message
 
 def segment_customers(df):
     # Pré-processamento para segmentação de clientes
     features = df[['Venda', 'feedback']].dropna(subset=['Venda', 'feedback'])
-
-    # Verificando o número de amostras válidas
-    print(f"Número de amostras válidas para segmentação: {len(features)}")
 
     if len(features) >= 3:  # Verifica se há ao menos 3 amostras
         scaler = StandardScaler()
@@ -140,87 +127,112 @@ def segment_customers(df):
         segmentos = df.groupby('segmento').agg({
             'feedback': 'mean',
             'Venda': 'mean',
-            'canal_origem': 'count',
-            'lucro': 'mean'
+            'canal_origem': 'count'
         })
 
         # Renomeando a coluna de contagem de clientes
         segmentos.rename(columns={'canal_origem': 'N_Clientes'}, inplace=True)
-        print("\nAnálise dos segmentos:")
-        print(segmentos)
 
         # Decisão sobre quais segmentos priorizar
         segmento_priorizado = segmentos['Venda'].idxmax()
-        print(f"\nO segmento que deve ser priorizado é: Segmento {segmento_priorizado}")
+        message = (f"{segmento_priorizado+1}")
+        return segmentos, message
     else:
         print("Amostras insuficientes para segmentação.")
 
-def prepare_target_variable(df):
-    # Criar a variável alvo (se houve venda ou não)
-    df['sucesso_campanha'] = np.where(df['Venda'] > 0, 1, 0)
-    return df
+def show_table(df):
+    for widget in frame_table.winfo_children():
+        widget.destroy()
+    
+    tree = ttk.Treeview(frame_table, columns=list(df.columns), show='headings')
+    tree.pack(expand=True, fill='both')
 
-def train_logistic_regression(df):
-    # Verifique a distribuição da variável alvo
-    print(df['sucesso_campanha'].value_counts())
+    for col in df.columns:
+        tree.heading(col, text=col)
+        tree.column(col, width=100)
+    
+    for _, row in df.iterrows():
+        tree.insert('', 'end', values=list(row))
 
-    if df['sucesso_campanha'].value_counts().min() > 0:  # Se há pelo menos uma amostra de cada classe
-        # Selecionar as features para prever o sucesso da campanha
-        features = ['feedback', 'idade', 'Curtidas', 'Compartilhamentos'] + list(df.filter(like='canal_origem_').columns) + list(df.filter(like='genero_').columns)
+def show_graph(data, kind='bar', title=''):
+    for widget in frame_table.winfo_children():
+        widget.destroy()
 
-        # Separar as variáveis independentes (X) e a variável alvo (y)
-        X = df[features]
-        y = df['sucesso_campanha']
+    # Cria a figura para o gráfico
+    fig, ax = plt.subplots(figsize=(6, 4))
 
-        # Dividir os dados em treino e teste
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    if kind == 'bar':
+        data.plot(kind='bar', x=data.columns[0], y=data.columns[1], ax=ax, legend=False)
+        # Coloca os rótulos do eixo x na horizontal
+        plt.xticks(rotation=0)
+    elif kind == 'pie':
+        data.set_index(data.columns[0]).plot(kind='pie', y=data.columns[1], ax=ax, legend=False, autopct='%1.1f%%')
+    
+    ax.set_title(title)
+    
+    # Insere o gráfico no frame usando o FigureCanvasTkAgg
+    canvas = FigureCanvasTkAgg(fig, master=frame_table)
+    canvas.draw()
+    canvas.get_tk_widget().pack(expand=True, fill='both')
 
-        # Padronizar os dados
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train[['feedback', 'idade', 'Curtidas', 'Compartilhamentos']])
-        X_test_scaled = scaler.transform(X_test[['feedback', 'idade', 'Curtidas', 'Compartilhamentos']])
+def show_message(message):
+    for widget in frame_message.winfo_children():
+        widget.destroy()
+    
+    text = ScrolledText(frame_message, wrap=tk.WORD, width=60, height=10)
+    text.pack(expand=True, fill='both')
+    text.insert(tk.END, message)
+    text.config(state=tk.DISABLED)
 
-        # Manter as colunas categóricas
-        X_train_final = pd.concat([pd.DataFrame(X_train_scaled, columns=['feedback', 'idade', 'Curtidas', 'Compartilhamentos']), X_train.drop(columns=['feedback', 'idade', 'Curtidas', 'Compartilhamentos']).reset_index(drop=True)], axis=1)
-        X_test_final = pd.concat([pd.DataFrame(X_test_scaled, columns=['feedback', 'idade', 'Curtidas', 'Compartilhamentos']), X_test.drop(columns=['feedback', 'idade', 'Curtidas', 'Compartilhamentos']).reset_index(drop=True)], axis=1)
+def show_table_with_result(df, analysis_function, result_label, chart_type='bar'):
+    table, result_message = analysis_function(df)
+    if not table.empty:
+        if chart_type:
+            show_graph(table, kind=chart_type, title=result_label)
+        else:
+            show_table(table)
+    show_message(result_label + "\n" + result_message)
 
-        # Treinar o modelo de regressão logística
-        modelo = LogisticRegression()
-        try:
-            modelo.fit(X_train_final, y_train)
-            
-            # Previsões
-            y_pred = modelo.predict(X_test_final)
-
-            # Avaliação do modelo
-            acuracia = accuracy_score(y_test, y_pred)
-            matriz_confusao = confusion_matrix(y_test, y_pred)
-            relatorio_classificacao = classification_report(y_test, y_pred)
-
-            print(f"\nAcurácia do modelo: {acuracia:.2f}")
-            print("\nMatriz de Confusão:")
-            print(matriz_confusao)
-            print("\nRelatório de Classificação:")
-            print(relatorio_classificacao)
-        except ValueError as e:
-            print(f"Erro ao treinar o modelo: {e}")
-    else:
-        print("A variável alvo não contém amostras suficientes de ambas as classes para treinar o modelo.")
-
-def main():
+def run_analysis(analysis_function, result_label, chart_type='bar'):
     df = read_data()
     df = preprocess_data(df)
-    analyze_sales(df)
-    analyze_age_distribution(df)
-    analyze_buyers(df)
-    analyze_gender(df)
-    analyze_channels(df)
-    analyze_feedbacks(df)
-    calculate_profit(df)
-    analyze_engagement(df)
-    segment_customers(df)
-    df = prepare_target_variable(df)
-    train_logistic_regression(df)
+    show_table_with_result(df, analysis_function, result_label, chart_type)
+
+def create_gui():
+    global frame_table, frame_message
+
+    root = tk.Tk()
+    root.title("Análise de Dados de Marketing")
+    root.geometry("800x600")
+
+    tab_control = ttk.Notebook(root)
+    tab1 = ttk.Frame(tab_control)
+    tab_control.add(tab1, text="Análises")
+    tab_control.pack(expand=True, fill='both')
+
+    frame_buttons = ttk.Frame(tab1)
+    frame_buttons.pack(side=tk.LEFT, fill='y', padx=10, pady=10)
+
+    frame_table = ttk.Frame(tab1)
+    frame_table.pack(side=tk.TOP, expand=True, fill='both')
+
+    frame_message = ttk.Frame(tab1)
+    frame_message.pack(side=tk.BOTTOM, fill='x', padx=10, pady=10)
+
+    buttons = [
+        ("Faixa Etária", lambda: run_analysis(analyze_age_distribution, "Média de idade dos 20% que mais compraram:")),
+        ("Gênero", lambda: run_analysis(analyze_gender, "Distribuição de Gênero dos Clientes:")),
+        ("Canais de Comunicação", lambda: run_analysis(analyze_channels, "Análise de Canais de Comunicação:")),
+        ("Feedbacks", lambda: run_analysis(analyze_feedbacks, "Análise de Feedbacks")),
+        ("Lucro", lambda: run_analysis(calculate_profit, "Análise de Lucros:")),
+        ("Engajamento", lambda: run_analysis(analyze_engagement, "Análise de Engajamento:")),
+        ("Segmentação de Clientes", lambda: run_analysis(segment_customers, "Segmentação de Clientes:", chart_type=None)),
+    ]
+
+    for text, command in buttons:
+        ttk.Button(frame_buttons, text=text, command=command).pack(fill='x', pady=5)
+
+    root.mainloop()
 
 if __name__ == "__main__":
-    main()
+    create_gui()
